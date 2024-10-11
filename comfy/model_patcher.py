@@ -315,25 +315,33 @@ class ModelPatcher:
 
     def patch_weight_to_device(self, key, device_to=None, inplace_update=False):
         if key not in self.patches:
+            logging.info(f"15.2. early return")
             return
 
         weight = comfy.utils.get_attr(self.model, key)
+        logging.info(f"15.3.")
 
         inplace_update = self.weight_inplace_update or inplace_update
+        logging.info(f"15.4.")
 
         if key not in self.backup:
             self.backup[key] = collections.namedtuple('Dimension', ['weight', 'inplace_update'])(weight.to(device=self.offload_device, copy=inplace_update), inplace_update)
+        logging.info(f"15.5.")
 
         if device_to is not None:
             temp_weight = comfy.model_management.cast_to_device(weight, device_to, torch.float32, copy=True)
         else:
             temp_weight = weight.to(torch.float32, copy=True)
+        logging.info(f"15.6.")
         out_weight = comfy.lora.calculate_weight(self.patches[key], temp_weight, key)
+        logging.info(f"15.7.")
         out_weight = comfy.float.stochastic_rounding(out_weight, weight.dtype, seed=string_to_seed(key))
+        logging.info(f"15.8.")
         if inplace_update:
             comfy.utils.copy_to_param(self.model, key, out_weight)
         else:
             comfy.utils.set_attr_param(self.model, key, out_weight)
+        logging.info(f"15.9.")
 
     def load(self, device_to=None, lowvram_model_memory=0, force_patch_weights=False, full_load=False):
         logging.info("13. start load")
@@ -390,9 +398,12 @@ class ModelPatcher:
                     mem_counter += module_mem
                     load_completely.append((module_mem, n, m))
 
-        logging.info("15. load 가 좀 되었다..")
+        logging.info(f"15. load 가 좀 되었다.. {len(load_completely)}")
         load_completely.sort(reverse=True)
+        idx15 = 0
         for x in load_completely:
+            idx15 += 1
+            logging.info(f"15.1. idx: {idx15}")
             n = x[1]
             m = x[2]
             weight_key = "{}.weight".format(n)
