@@ -330,6 +330,7 @@ class LoadedModel:
             except Exception as e:
                 self.model.unpatch_model(self.model.offload_device)
                 self.model_unload()
+                logging.error(f"10.3. patch_model 하다가 에러!! {e}")
                 raise e
 
         if is_intel_xpu() and not args.disable_ipex_optimize and 'ipex' in globals() and self.real_model is not None:
