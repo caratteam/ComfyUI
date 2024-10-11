@@ -321,10 +321,11 @@ class LoadedModel:
             use_more_vram = lowvram_model_memory
             if use_more_vram == 0:
                 use_more_vram = 1e32
-            logging.info(f"11. use_more_vram : ${use_more_vram}")
+            logging.info(f"10.1. lodaed_size 가 큰경우")
             self.model_use_more_vram(use_more_vram)
         else:
             try:
+                logging.info("10.2. lodaed_size 가 0이더라구요..")
                 self.real_model = self.model.patch_model(device_to=patch_model_to, lowvram_model_memory=lowvram_model_memory, load_weights=load_weights, force_patch_weights=force_patch_weights)
             except Exception as e:
                 self.model.unpatch_model(self.model.offload_device)

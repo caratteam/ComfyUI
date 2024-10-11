@@ -336,6 +336,7 @@ class ModelPatcher:
             comfy.utils.set_attr_param(self.model, key, out_weight)
 
     def load(self, device_to=None, lowvram_model_memory=0, force_patch_weights=False, full_load=False):
+        logging.info("13. start load")
         mem_counter = 0
         patch_counter = 0
         lowvram_counter = 0
@@ -346,6 +347,7 @@ class ModelPatcher:
 
         load_completely = []
         loading.sort(reverse=True)
+        logging.info("14. start load!")
         for x in loading:
             n = x[1]
             m = x[2]
@@ -388,6 +390,7 @@ class ModelPatcher:
                     mem_counter += module_mem
                     load_completely.append((module_mem, n, m))
 
+        logging.info("15. load 가 좀 되었다..")
         load_completely.sort(reverse=True)
         for x in load_completely:
             n = x[1]
@@ -403,8 +406,10 @@ class ModelPatcher:
             logging.debug("lowvram: loaded module regularly {} {}".format(n, m))
             m.comfy_patched_weights = True
 
+        logging.info(f"16. load_completely : {len(load_completely)}")
         for x in load_completely:
             x[2].to(device_to)
+        logging.info(f"17. lowvram_counter : {lowvram_counter}")
 
         if lowvram_counter > 0:
             logging.info("loaded partially {} {} {}".format(lowvram_model_memory / (1024 * 1024), mem_counter / (1024 * 1024), patch_counter))
@@ -421,6 +426,7 @@ class ModelPatcher:
         self.model.model_loaded_weight_memory = mem_counter
 
     def patch_model(self, device_to=None, lowvram_model_memory=0, load_weights=True, force_patch_weights=False):
+        logging.info("11")
         for k in self.object_patches:
             old = comfy.utils.set_attr(self.model, k, self.object_patches[k])
             if k not in self.object_patches_backup:
@@ -430,6 +436,7 @@ class ModelPatcher:
             full_load = True
         else:
             full_load = False
+        logging.info(f"12. full_load : {full_load}, load_weights: {load_weights}")
 
         if load_weights:
             self.load(device_to, lowvram_model_memory=lowvram_model_memory, force_patch_weights=force_patch_weights, full_load=full_load)
