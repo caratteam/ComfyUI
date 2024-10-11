@@ -308,15 +308,20 @@ class LoadedModel:
     def model_load(self, lowvram_model_memory=0, force_patch_weights=False):
         patch_model_to = self.device
 
+        logging.info(f"7. model_load start")
         self.model.model_patches_to(self.device)
+        logging.info(f"8. model path to device")
         self.model.model_patches_to(self.model.model_dtype())
+        logging.info(f"9. model path to model_dtype?")
 
         load_weights = not self.weights_loaded
+        logging.info(f"10. model loaded_size : ${self.model.loaded_size()}")
 
         if self.model.loaded_size() > 0:
             use_more_vram = lowvram_model_memory
             if use_more_vram == 0:
                 use_more_vram = 1e32
+            logging.info(f"11. use_more_vram : ${use_more_vram}")
             self.model_use_more_vram(use_more_vram)
         else:
             try:
@@ -505,43 +510,55 @@ def load_models_gpu(models, memory_required=0, force_patch_weights=False, minimu
         if len(models_to_load) == 0:
             return
 
+    # 이 로그가 마지막이라니,, heyhey
     logging.info(f"Loading {len(models_to_load)} new model{'s' if len(models_to_load) > 1 else ''}")
 
     total_memory_required = {}
     for loaded_model in models_to_load:
         unload_model_clones(loaded_model.model, unload_weights_only=True, force_unload=False) #unload clones where the weights are different
         total_memory_required[loaded_model.device] = total_memory_required.get(loaded_model.device, 0) + loaded_model.model_memory_required(loaded_model.device)
+    logging.info("1. unload clones where the weights are different")
 
     for loaded_model in models_already_loaded:
         total_memory_required[loaded_model.device] = total_memory_required.get(loaded_model.device, 0) + loaded_model.model_memory_required(loaded_model.device)
+    logging.info("2.")
 
     for loaded_model in models_to_load:
         weights_unloaded = unload_model_clones(loaded_model.model, unload_weights_only=False, force_unload=False) #unload the rest of the clones where the weights can stay loaded
         if weights_unloaded is not None:
             loaded_model.weights_loaded = not weights_unloaded
+    logging.info("3. unlaod the rest of the clones where the weights can stay loaded")
 
     for device in total_memory_required:
         if device != torch.device("cpu"):
             free_memory(total_memory_required[device] * 1.1 + extra_mem, device, models_already_loaded)
+    logging.info("4. free_memory")
 
     for loaded_model in models_to_load:
         model = loaded_model.model
         torch_dev = model.load_device
+        logging.info(f"5. start to load. is_device_cpu : ${is_device_cpu(torch_dev)}")
         if is_device_cpu(torch_dev):
             vram_set_state = VRAMState.DISABLED
         else:
             vram_set_state = vram_state
         lowvram_model_memory = 0
         if lowvram_available and (vram_set_state == VRAMState.LOW_VRAM or vram_set_state == VRAMState.NORMAL_VRAM) and not force_full_load:
+            logging.info("5.1. lowvram_available & vram 아껴쓰라하고 force_full_load 가 아니면 들어오는곳")
             model_size = loaded_model.model_memory_required(torch_dev)
+            logging.info(f"5.2. model_size:${model_size}")
             current_free_mem = get_free_memory(torch_dev)
+            logging.info(f"5.3. current_free_mem:${current_free_mem}")
             lowvram_model_memory = max(64 * (1024 * 1024), (current_free_mem - minimum_memory_required), min(current_free_mem * 0.4, current_free_mem - minimum_inference_memory()))
+            logging.info(f"5.4. lowvram_model_memory:${lowvram_model_memory}")
             if model_size <= lowvram_model_memory: #only switch to lowvram if really necessary
                 lowvram_model_memory = 0
+                logging.info(f"5.5. not switch to lowvram becasue it's unnecessary")
 
         if vram_set_state == VRAMState.NO_VRAM:
             lowvram_model_memory = 64 * 1024 * 1024
 
+        logging.info(f"6. ")
         cur_loaded_model = loaded_model.model_load(lowvram_model_memory, force_patch_weights=force_patch_weights)
         current_loaded_models.insert(0, loaded_model)
 
