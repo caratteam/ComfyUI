@@ -23,12 +23,31 @@ import logging
 import uuid
 import collections
 import math
+import subprocess
 
 import comfy.utils
 import comfy.float
 import comfy.model_management
 import comfy.lora
 from comfy.comfy_types import UnetWrapperFunction
+
+def get_gpu_memory():
+    try:
+        # nvidia-smi 명령어 실행
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.total,memory.used,memory.free", "--format=csv,nounits,noheader"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+            text=True
+        )
+        # 결과 파싱
+        output = result.stdout.strip().split("\n")
+        for i, gpu in enumerate(output):
+            total, used, free = gpu.split(", ")
+            logging.info(f"Total Memory: {total} MiB / Used Memory: {used} MiB / Free Memory: {free} MiB")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Error occurred: {e.stderr}")
 
 def string_to_seed(data):
     crc = 0xFFFFFFFF
@@ -327,10 +346,14 @@ class ModelPatcher:
         if key not in self.backup:
             self.backup[key] = collections.namedtuple('Dimension', ['weight', 'inplace_update'])(weight.to(device=self.offload_device, copy=inplace_update), inplace_update)
         logging.info(f"15.5.")
+        logging.info(f"device_to : {device_to}")
+        get_gpu_memory()
 
         if device_to is not None:
+            logging.info(f"15.5.1")
             temp_weight = comfy.model_management.cast_to_device(weight, device_to, torch.float32, copy=True)
         else:
+            logging.info(f"15.5.2")
             temp_weight = weight.to(torch.float32, copy=True)
         logging.info(f"15.6.")
         out_weight = comfy.lora.calculate_weight(self.patches[key], temp_weight, key)
