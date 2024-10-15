@@ -31,6 +31,14 @@ import comfy.model_management
 import comfy.lora
 from comfy.comfy_types import UnetWrapperFunction
 
+file_handler = logging.FileHandler('log_output.txt')
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+logger.addHandler(file_handler)
+
 def get_gpu_memory():
     try:
         # nvidia-smi 명령어 실행
@@ -45,9 +53,9 @@ def get_gpu_memory():
         output = result.stdout.strip().split("\n")
         for i, gpu in enumerate(output):
             total, used, free = gpu.split(", ")
-            logging.info(f"Total Memory: {total} MiB / Used Memory: {used} MiB / Free Memory: {free} MiB")
+            logger.info(f"Total Memory: {total} MiB / Used Memory: {used} MiB / Free Memory: {free} MiB")
     except subprocess.CalledProcessError as e:
-        logging.error(f"Error occurred: {e.stderr}")
+        logger.error(f"Error occurred: {e.stderr}")
 
 def string_to_seed(data):
     crc = 0xFFFFFFFF
@@ -332,42 +340,42 @@ class ModelPatcher:
                     sd.pop(k)
         return sd
 
-    def patch_weight_to_device(self, key, device_to=None, inplace_update=False):
+    def patch_weight_to_device(self, key, device_to=None, inplace_update=False, idx=None):
         if key not in self.patches:
-            logging.info(f"15.2. early return")
+            logger.info(f"15.2. early return")
             return
 
         weight = comfy.utils.get_attr(self.model, key)
-        logging.info(f"15.3.")
+        logger.info(f"15.3.")
 
         inplace_update = self.weight_inplace_update or inplace_update
-        logging.info(f"15.4.")
+        logger.info(f"15.4.")
 
         if key not in self.backup:
             self.backup[key] = collections.namedtuple('Dimension', ['weight', 'inplace_update'])(weight.to(device=self.offload_device, copy=inplace_update), inplace_update)
-        logging.info(f"15.5.")
-        logging.info(f"device_to : {device_to}")
+        logger.info(f"15.5.")
+        logger.info(f"device_to : {device_to}")
         get_gpu_memory()
 
         if device_to is not None:
-            logging.info(f"15.5.1")
+            logger.info(f"15.5.1")
             temp_weight = comfy.model_management.cast_to_device(weight, device_to, torch.float32, copy=True)
         else:
-            logging.info(f"15.5.2")
+            logger.info(f"15.5.2")
             temp_weight = weight.to(torch.float32, copy=True)
-        logging.info(f"15.6.")
+        logger.info(f"15.6.")
         out_weight = comfy.lora.calculate_weight(self.patches[key], temp_weight, key)
-        logging.info(f"15.7.")
+        logger.info(f"15.7.")
         out_weight = comfy.float.stochastic_rounding(out_weight, weight.dtype, seed=string_to_seed(key))
-        logging.info(f"15.8.")
+        logger.info(f"15.8.")
         if inplace_update:
             comfy.utils.copy_to_param(self.model, key, out_weight)
         else:
             comfy.utils.set_attr_param(self.model, key, out_weight)
-        logging.info(f"15.9.")
+        logger.info(f"15.9.")
 
     def load(self, device_to=None, lowvram_model_memory=0, force_patch_weights=False, full_load=False):
-        logging.info("13. start load")
+        logger.info("13. start load")
         mem_counter = 0
         patch_counter = 0
         lowvram_counter = 0
@@ -378,7 +386,7 @@ class ModelPatcher:
 
         load_completely = []
         loading.sort(reverse=True)
-        logging.info("14. start load!")
+        logger.info("14. start load!")
         for x in loading:
             n = x[1]
             m = x[2]
@@ -421,12 +429,12 @@ class ModelPatcher:
                     mem_counter += module_mem
                     load_completely.append((module_mem, n, m))
 
-        logging.info(f"15. load 가 좀 되었다.. {len(load_completely)}")
+        logger.info(f"15. load 가 좀 되었다.. {len(load_completely)}")
         load_completely.sort(reverse=True)
         idx15 = 0
         for x in load_completely:
             idx15 += 1
-            logging.info(f"15.1. idx: {idx15}")
+            logger.info(f"15.1. idx: {idx15}")
             n = x[1]
             m = x[2]
             weight_key = "{}.weight".format(n)
@@ -435,15 +443,15 @@ class ModelPatcher:
                 if m.comfy_patched_weights == True:
                     continue
 
-            self.patch_weight_to_device(weight_key, device_to=device_to)
-            self.patch_weight_to_device(bias_key, device_to=device_to)
+            self.patch_weight_to_device(weight_key, device_to=device_to, idx=idx15)
+            self.patch_weight_to_device(bias_key, device_to=device_to, idx=idx15)
             logging.debug("lowvram: loaded module regularly {} {}".format(n, m))
             m.comfy_patched_weights = True
 
-        logging.info(f"16. load_completely : {len(load_completely)}")
+        logger.info(f"16. load_completely : {len(load_completely)}")
         for x in load_completely:
             x[2].to(device_to)
-        logging.info(f"17. lowvram_counter : {lowvram_counter}")
+        logger.info(f"17. lowvram_counter : {lowvram_counter}")
 
         if lowvram_counter > 0:
             logging.info("loaded partially {} {} {}".format(lowvram_model_memory / (1024 * 1024), mem_counter / (1024 * 1024), patch_counter))
@@ -460,7 +468,7 @@ class ModelPatcher:
         self.model.model_loaded_weight_memory = mem_counter
 
     def patch_model(self, device_to=None, lowvram_model_memory=0, load_weights=True, force_patch_weights=False):
-        logging.info("11")
+        logger.info("11")
         for k in self.object_patches:
             old = comfy.utils.set_attr(self.model, k, self.object_patches[k])
             if k not in self.object_patches_backup:
@@ -470,7 +478,7 @@ class ModelPatcher:
             full_load = True
         else:
             full_load = False
-        logging.info(f"12. full_load : {full_load}, load_weights: {load_weights}")
+        logger.info(f"12. full_load : {full_load}, load_weights: {load_weights}")
 
         if load_weights:
             self.load(device_to, lowvram_model_memory=lowvram_model_memory, force_patch_weights=force_patch_weights, full_load=full_load)

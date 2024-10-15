@@ -24,6 +24,14 @@ import torch
 import sys
 import platform
 
+file_handler = logging.FileHandler('log_output.txt')
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+logger.addHandler(file_handler)
+
 class VRAMState(Enum):
     DISABLED = 0    #No vram present: no need to move models to vram
     NO_VRAM = 1     #Very low vram: enable all the options to save vram
@@ -54,7 +62,7 @@ except:
 
 lowvram_available = True
 if args.deterministic:
-    logging.info("Using deterministic algorithms for pytorch")
+    logger.info("Using deterministic algorithms for pytorch")
     torch.use_deterministic_algorithms(True, warn_only=True)
 
 directml_enabled = False
@@ -66,7 +74,7 @@ if args.directml is not None:
         directml_device = torch_directml.device()
     else:
         directml_device = torch_directml.device(device_index)
-    logging.info("Using directml with device: {}".format(torch_directml.device_name(device_index)))
+    logger.info("Using directml with device: {}".format(torch_directml.device_name(device_index)))
     # torch_directml.disable_tiled_resources(True)
     lowvram_available = False #TODO: need to find a way to get free memory in directml before this can be enabled by default.
 
@@ -142,10 +150,10 @@ def get_total_memory(dev=None, torch_total_too=False):
 
 total_vram = get_total_memory(get_torch_device()) / (1024 * 1024)
 total_ram = psutil.virtual_memory().total / (1024 * 1024)
-logging.info("Total VRAM {:0.0f} MB, total RAM {:0.0f} MB".format(total_vram, total_ram))
+logger.info("Total VRAM {:0.0f} MB, total RAM {:0.0f} MB".format(total_vram, total_ram))
 
 try:
-    logging.info("pytorch version: {}".format(torch_version))
+    logger.info("pytorch version: {}".format(torch_version))
 except:
     pass
 
@@ -169,7 +177,7 @@ else:
             pass
         try:
             XFORMERS_VERSION = xformers.version.__version__
-            logging.info("xformers version: {}".format(XFORMERS_VERSION))
+            logger.info("xformers version: {}".format(XFORMERS_VERSION))
             if XFORMERS_VERSION.startswith("0.0.18"):
                 logging.warning("\nWARNING: This version of xformers has a major bug where you will get black images when generating high resolution images.")
                 logging.warning("Please downgrade or upgrade xformers to a different version.\n")
@@ -229,11 +237,11 @@ elif args.highvram or args.gpu_only:
 FORCE_FP32 = False
 FORCE_FP16 = False
 if args.force_fp32:
-    logging.info("Forcing FP32, if this improves things please report it.")
+    logger.info("Forcing FP32, if this improves things please report it.")
     FORCE_FP32 = True
 
 if args.force_fp16:
-    logging.info("Forcing FP16.")
+    logger.info("Forcing FP16.")
     FORCE_FP16 = True
 
 if lowvram_available:
@@ -247,12 +255,12 @@ if cpu_state != CPUState.GPU:
 if cpu_state == CPUState.MPS:
     vram_state = VRAMState.SHARED
 
-logging.info(f"Set vram state to: {vram_state.name}")
+logger.info(f"Set vram state to: {vram_state.name}")
 
 DISABLE_SMART_MEMORY = args.disable_smart_memory
 
 if DISABLE_SMART_MEMORY:
-    logging.info("Disabling smart memory management")
+    logger.info("Disabling smart memory management")
 
 def get_torch_device_name(device):
     if hasattr(device, 'type'):
@@ -270,7 +278,7 @@ def get_torch_device_name(device):
         return "CUDA {}: {}".format(device, torch.cuda.get_device_name(device))
 
 try:
-    logging.info("Device: {}".format(get_torch_device_name(get_torch_device())))
+    logger.info("Device: {}".format(get_torch_device_name(get_torch_device())))
 except:
     logging.warning("Could not pick default device.")
 
@@ -308,24 +316,24 @@ class LoadedModel:
     def model_load(self, lowvram_model_memory=0, force_patch_weights=False):
         patch_model_to = self.device
 
-        logging.info(f"7. model_load start")
+        logger.info(f"7. model_load start")
         self.model.model_patches_to(self.device)
-        logging.info(f"8. model path to device")
+        logger.info(f"8. model path to device")
         self.model.model_patches_to(self.model.model_dtype())
-        logging.info(f"9. model path to model_dtype?")
+        logger.info(f"9. model path to model_dtype?")
 
         load_weights = not self.weights_loaded
-        logging.info(f"10. model loaded_size : ${self.model.loaded_size()}")
+        logger.info(f"10. model loaded_size : ${self.model.loaded_size()}")
 
         if self.model.loaded_size() > 0:
             use_more_vram = lowvram_model_memory
             if use_more_vram == 0:
                 use_more_vram = 1e32
-            logging.info(f"10.1. lodaed_size 가 큰경우")
+            logger.info(f"10.1. lodaed_size 가 큰경우")
             self.model_use_more_vram(use_more_vram)
         else:
             try:
-                logging.info("10.2. lodaed_size 가 0이더라구요..")
+                logger.info("10.2. lodaed_size 가 0이더라구요..")
                 self.real_model = self.model.patch_model(device_to=patch_model_to, lowvram_model_memory=lowvram_model_memory, load_weights=load_weights, force_patch_weights=force_patch_weights)
             except Exception as e:
                 self.model.unpatch_model(self.model.offload_device)
@@ -494,7 +502,7 @@ def load_models_gpu(models, memory_required=0, force_patch_weights=False, minimu
 
         if loaded is None:
             if hasattr(x, "model"):
-                logging.info(f"Requested to load {x.model.__class__.__name__}")
+                logger.info(f"Requested to load {x.model.__class__.__name__}")
             models_to_load.append(loaded_model)
 
     if len(models_to_load) == 0:
@@ -504,63 +512,63 @@ def load_models_gpu(models, memory_required=0, force_patch_weights=False, minimu
                 free_memory(extra_mem + offloaded_memory(models_already_loaded, d), d, models_already_loaded)
                 free_mem = get_free_memory(d)
                 if free_mem < minimum_memory_required:
-                    logging.info("Unloading models for lowram load.") #TODO: partial model unloading when this case happens, also handle the opposite case where models can be unlowvramed.
+                    logger.info("Unloading models for lowram load.") #TODO: partial model unloading when this case happens, also handle the opposite case where models can be unlowvramed.
                     models_to_load = free_memory(minimum_memory_required, d)
-                    logging.info("{} models unloaded.".format(len(models_to_load)))
+                    logger.info("{} models unloaded.".format(len(models_to_load)))
                 else:
                     use_more_memory(free_mem - minimum_memory_required, models_already_loaded, d)
         if len(models_to_load) == 0:
             return
 
     # 이 로그가 마지막이라니,, heyhey
-    logging.info(f"Loading {len(models_to_load)} new model{'s' if len(models_to_load) > 1 else ''}")
+    logger.info(f"Loading {len(models_to_load)} new model{'s' if len(models_to_load) > 1 else ''}")
 
     total_memory_required = {}
     for loaded_model in models_to_load:
         unload_model_clones(loaded_model.model, unload_weights_only=True, force_unload=False) #unload clones where the weights are different
         total_memory_required[loaded_model.device] = total_memory_required.get(loaded_model.device, 0) + loaded_model.model_memory_required(loaded_model.device)
-    logging.info("1. unload clones where the weights are different")
+    logger.info("1. unload clones where the weights are different")
 
     for loaded_model in models_already_loaded:
         total_memory_required[loaded_model.device] = total_memory_required.get(loaded_model.device, 0) + loaded_model.model_memory_required(loaded_model.device)
-    logging.info("2.")
+    logger.info("2.")
 
     for loaded_model in models_to_load:
         weights_unloaded = unload_model_clones(loaded_model.model, unload_weights_only=False, force_unload=False) #unload the rest of the clones where the weights can stay loaded
         if weights_unloaded is not None:
             loaded_model.weights_loaded = not weights_unloaded
-    logging.info("3. unlaod the rest of the clones where the weights can stay loaded")
+    logger.info("3. unlaod the rest of the clones where the weights can stay loaded")
 
     for device in total_memory_required:
         if device != torch.device("cpu"):
             free_memory(total_memory_required[device] * 1.1 + extra_mem, device, models_already_loaded)
-    logging.info("4. free_memory")
+    logger.info("4. free_memory")
 
     for loaded_model in models_to_load:
         model = loaded_model.model
         torch_dev = model.load_device
-        logging.info(f"5. start to load. is_device_cpu : ${is_device_cpu(torch_dev)}")
+        logger.info(f"5. start to load. is_device_cpu : ${is_device_cpu(torch_dev)}")
         if is_device_cpu(torch_dev):
             vram_set_state = VRAMState.DISABLED
         else:
             vram_set_state = vram_state
         lowvram_model_memory = 0
         if lowvram_available and (vram_set_state == VRAMState.LOW_VRAM or vram_set_state == VRAMState.NORMAL_VRAM) and not force_full_load:
-            logging.info("5.1. lowvram_available & vram 아껴쓰라하고 force_full_load 가 아니면 들어오는곳")
+            logger.info("5.1. lowvram_available & vram 아껴쓰라하고 force_full_load 가 아니면 들어오는곳")
             model_size = loaded_model.model_memory_required(torch_dev)
-            logging.info(f"5.2. model_size:${model_size}")
+            logger.info(f"5.2. model_size:${model_size}")
             current_free_mem = get_free_memory(torch_dev)
-            logging.info(f"5.3. current_free_mem:${current_free_mem}")
+            logger.info(f"5.3. current_free_mem:${current_free_mem}")
             lowvram_model_memory = max(64 * (1024 * 1024), (current_free_mem - minimum_memory_required), min(current_free_mem * 0.4, current_free_mem - minimum_inference_memory()))
-            logging.info(f"5.4. lowvram_model_memory:${lowvram_model_memory}")
+            logger.info(f"5.4. lowvram_model_memory:${lowvram_model_memory}")
             if model_size <= lowvram_model_memory: #only switch to lowvram if really necessary
                 lowvram_model_memory = 0
-                logging.info(f"5.5. not switch to lowvram becasue it's unnecessary")
+                logger.info(f"5.5. not switch to lowvram becasue it's unnecessary")
 
         if vram_set_state == VRAMState.NO_VRAM:
             lowvram_model_memory = 64 * 1024 * 1024
 
-        logging.info(f"6. ")
+        logger.info(f"6. ")
         cur_loaded_model = loaded_model.model_load(lowvram_model_memory, force_patch_weights=force_patch_weights)
         current_loaded_models.insert(0, loaded_model)
 
@@ -860,25 +868,35 @@ def force_channels_last():
     return False
 
 def cast_to_device(tensor, device, dtype, copy=False):
+    logger.info(f"15.5.1.1 CAST TO DEVICE")
     device_supports_cast = False
     if tensor.dtype == torch.float32 or tensor.dtype == torch.float16:
+        logger.info(f"15.5.1.2")
         device_supports_cast = True
     elif tensor.dtype == torch.bfloat16:
+        logger.info(f"15.5.1.3")
         if hasattr(device, 'type') and device.type.startswith("cuda"):
+            logger.info(f"15.5.1.4")
             device_supports_cast = True
         elif is_intel_xpu():
+            logger.info(f"15.5.1.5")
             device_supports_cast = True
 
     non_blocking = device_should_use_non_blocking(device)
+    logger.info(f"15.5.1.6: non_blocking = {non_blocking}")
 
     if device_supports_cast:
+        logger.info(f"15.5.1.7")
         if copy:
             if tensor.device == device:
+                logger.info(f"15.5.1.8")
                 return tensor.to(dtype, copy=copy, non_blocking=non_blocking)
             return tensor.to(device, copy=copy, non_blocking=non_blocking).to(dtype, non_blocking=non_blocking)
         else:
+            logger.info(f"15.5.1.9")
             return tensor.to(device, non_blocking=non_blocking).to(dtype, non_blocking=non_blocking)
     else:
+        logger.info(f"15.5.1.10")
         return tensor.to(device, dtype, copy=copy, non_blocking=non_blocking)
 
 def xformers_enabled():
