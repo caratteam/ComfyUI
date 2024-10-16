@@ -527,48 +527,42 @@ def load_models_gpu(models, memory_required=0, force_patch_weights=False, minimu
     for loaded_model in models_to_load:
         unload_model_clones(loaded_model.model, unload_weights_only=True, force_unload=False) #unload clones where the weights are different
         total_memory_required[loaded_model.device] = total_memory_required.get(loaded_model.device, 0) + loaded_model.model_memory_required(loaded_model.device)
-    logger.info("1. unload clones where the weights are different")
 
     for loaded_model in models_already_loaded:
         total_memory_required[loaded_model.device] = total_memory_required.get(loaded_model.device, 0) + loaded_model.model_memory_required(loaded_model.device)
-    logger.info("2.")
 
     for loaded_model in models_to_load:
         weights_unloaded = unload_model_clones(loaded_model.model, unload_weights_only=False, force_unload=False) #unload the rest of the clones where the weights can stay loaded
         if weights_unloaded is not None:
             loaded_model.weights_loaded = not weights_unloaded
-    logger.info("3. unlaod the rest of the clones where the weights can stay loaded")
 
     for device in total_memory_required:
         if device != torch.device("cpu"):
             free_memory(total_memory_required[device] * 1.1 + extra_mem, device, models_already_loaded)
-    logger.info("4. free_memory")
 
     for loaded_model in models_to_load:
         model = loaded_model.model
         torch_dev = model.load_device
-        logger.info(f"5. start to load. is_device_cpu : ${is_device_cpu(torch_dev)}")
         if is_device_cpu(torch_dev):
             vram_set_state = VRAMState.DISABLED
         else:
             vram_set_state = vram_state
         lowvram_model_memory = 0
         if lowvram_available and (vram_set_state == VRAMState.LOW_VRAM or vram_set_state == VRAMState.NORMAL_VRAM) and not force_full_load:
-            logger.info("5.1. lowvram_available & vram 아껴쓰라하고 force_full_load 가 아니면 들어오는곳")
             model_size = loaded_model.model_memory_required(torch_dev)
-            logger.info(f"5.2. model_size:${model_size}")
+            print(f"model_size : {round(model_size*1e-9, 2)}")
             current_free_mem = get_free_memory(torch_dev)
-            logger.info(f"5.3. current_free_mem:${current_free_mem}")
+            print(f"current_free_mem : {round(current_free_mem*1e-9, 2)}")
             lowvram_model_memory = max(64 * (1024 * 1024), (current_free_mem - minimum_memory_required), min(current_free_mem * 0.4, current_free_mem - minimum_inference_memory()))
-            logger.info(f"5.4. lowvram_model_memory:${lowvram_model_memory}")
+            print(f"lowvram_model_memory : {round(lowvram_model_memory*1e-9, 2)}")
             if model_size <= lowvram_model_memory: #only switch to lowvram if really necessary
                 lowvram_model_memory = 0
-                logger.info(f"5.5. not switch to lowvram becasue it's unnecessary")
+
 
         if vram_set_state == VRAMState.NO_VRAM:
             lowvram_model_memory = 64 * 1024 * 1024
 
-        logger.info(f"6. ")
+        print(f"fin lowvram_model_memory : {lowvram_model_memory} / force_patch_weights : {force_patch_weights}")
         cur_loaded_model = loaded_model.model_load(lowvram_model_memory, force_patch_weights=force_patch_weights)
         current_loaded_models.insert(0, loaded_model)
 
@@ -868,35 +862,25 @@ def force_channels_last():
     return False
 
 def cast_to_device(tensor, device, dtype, copy=False):
-    logger.info(f"15.5.1.1 CAST TO DEVICE")
     device_supports_cast = False
     if tensor.dtype == torch.float32 or tensor.dtype == torch.float16:
-        logger.info(f"15.5.1.2")
         device_supports_cast = True
     elif tensor.dtype == torch.bfloat16:
-        logger.info(f"15.5.1.3")
         if hasattr(device, 'type') and device.type.startswith("cuda"):
-            logger.info(f"15.5.1.4")
             device_supports_cast = True
         elif is_intel_xpu():
-            logger.info(f"15.5.1.5")
             device_supports_cast = True
 
     non_blocking = device_should_use_non_blocking(device)
-    logger.info(f"15.5.1.6: non_blocking = {non_blocking}")
 
     if device_supports_cast:
-        logger.info(f"15.5.1.7")
         if copy:
             if tensor.device == device:
-                logger.info(f"15.5.1.8")
                 return tensor.to(dtype, copy=copy, non_blocking=non_blocking)
             return tensor.to(device, copy=copy, non_blocking=non_blocking).to(dtype, non_blocking=non_blocking)
         else:
-            logger.info(f"15.5.1.9")
             return tensor.to(device, non_blocking=non_blocking).to(dtype, non_blocking=non_blocking)
     else:
-        logger.info(f"15.5.1.10")
         return tensor.to(device, dtype, copy=copy, non_blocking=non_blocking)
 
 def xformers_enabled():
